@@ -9,12 +9,12 @@ import {Observable} from 'rxjs/Observable';
 import {of } from 'rxjs/observable/of';
 
 import {ActivatedRoute, ActivatedRouteSnapshot, CanActivate, CanDeactivate, Event, NavigationCancel, NavigationEnd, NavigationError, NavigationStart, Params, ROUTER_DIRECTIVES, Resolve, Router, RouterStateSnapshot, RoutesRecognized, provideRoutes} from '../index';
-import {RouterTestModule, SpyAppModuleFactoryLoader} from '../testing';
+import {RouterTestingModule, SpyAppModuleFactoryLoader} from '../testing';
 
 describe('Integration', () => {
   beforeEach(() => {
     configureModule({
-      modules: [RouterTestModule],
+      modules: [RouterTestingModule],
       providers: [provideRoutes(
           [{path: '', component: BlankCmp}, {path: 'simple', component: SimpleCmp}])]
     });
@@ -594,10 +594,9 @@ describe('Integration', () => {
              expect(fixture.debugElement.nativeElement).toHaveText('team 33 [ simple, right:  ]');
            })));
 
-    it('should update hrefs when query params change',
+    it('should not preserve query params and fragment by default',
        fakeAsync(
            inject([Router, TestComponentBuilder], (router: Router, tcb: TestComponentBuilder) => {
-
              @Component({
                selector: 'someRoot',
                template: `<router-outlet></router-outlet><a routerLink="/home">Link</a>`,
@@ -612,14 +611,41 @@ describe('Integration', () => {
 
              const native = fixture.debugElement.nativeElement.querySelector('a');
 
-             router.navigateByUrl('/home?q=123');
+             router.navigateByUrl('/home?q=123#fragment');
              advance(fixture);
-             expect(native.getAttribute('href')).toEqual('/home?q=123');
-
-             router.navigateByUrl('/home?q=456');
-             advance(fixture);
-             expect(native.getAttribute('href')).toEqual('/home?q=456');
+             expect(native.getAttribute('href')).toEqual('/home');
            })));
+
+    it('should update hrefs when query params or fragment change',
+       fakeAsync(inject([Router, TestComponentBuilder], (router: Router, tcb: TestComponentBuilder) => {
+
+         @Component({
+           selector: 'someRoot',
+           template:
+               `<router-outlet></router-outlet><a routerLink="/home" preserveQueryParams preserveFragment>Link</a>`,
+           directives: ROUTER_DIRECTIVES
+         })
+         class RootCmpWithLink {
+         }
+
+         const fixture = createRoot(tcb, router, RootCmpWithLink);
+
+         router.resetConfig([{path: 'home', component: SimpleCmp}]);
+
+         const native = fixture.debugElement.nativeElement.querySelector('a');
+
+         router.navigateByUrl('/home?q=123');
+         advance(fixture);
+         expect(native.getAttribute('href')).toEqual('/home?q=123');
+
+         router.navigateByUrl('/home?q=456');
+         advance(fixture);
+         expect(native.getAttribute('href')).toEqual('/home?q=456');
+
+         router.navigateByUrl('/home?q=456#1');
+         advance(fixture);
+         expect(native.getAttribute('href')).toEqual('/home?q=456#1');
+       })));
 
     it('should support using links on non-a tags',
        fakeAsync(
@@ -1166,6 +1192,29 @@ describe('Integration', () => {
              expect(location.path()).toEqual('/team/22/link/simple');
              expect(nativeLink.className).toEqual('');
              expect(nativeButton.className).toEqual('');
+           })));
+
+    it('should not set the class until the first navigation succeeds',
+       fakeAsync(inject(
+           [Router, TestComponentBuilder, Location],
+           (router: Router, tcb: TestComponentBuilder, location: Location) => {
+             @Component({
+               template:
+                   '<router-outlet></router-outlet><a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" >'
+             })
+             class RootCmpWithLink {
+             }
+
+             const f = tcb.createFakeAsync(RootCmpWithLink);
+             advance(f);
+
+             const link = f.debugElement.nativeElement.querySelector('a');
+             expect(link.className).toEqual('');
+
+             router.initialNavigation();
+             advance(f);
+
+             expect(link.className).toEqual('active');
            })));
 
 
